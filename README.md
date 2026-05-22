@@ -25,6 +25,16 @@
 </p>
 
 <p align="center">
+  <a href="https://github.com/DANG-PH/dragonboy-nginx-service">
+    <img src="https://img.shields.io/badge/⚙_Mã_nguồn_script-dragonboy--nginx--service-181717?style=for-the-badge&logo=github&logoColor=white" alt="Source scripts"/>
+  </a>
+  &nbsp;
+  <a href="https://ngocrongdark.com">
+    <img src="https://img.shields.io/badge/▶_CHƠI_NGAY-ngocrongdark.com-FF6B35?style=for-the-badge&logoColor=white" alt="Play Now"/>
+  </a>
+</p>
+
+<p align="center">
   Kho lưu trữ <strong>backup database</strong> cho dự án <strong>Ngọc Rồng Online</strong> – tựa game MMORPG<br>
   lấy cảm hứng từ bộ truyện <strong>Dragon Ball (7 Viên Ngọc Rồng)</strong> của tác giả Akira Toriyama.<br>
   Backup chạy <strong>tự động hằng ngày lúc 4h sáng</strong>, lưu đồng thời ở 3 nơi để an toàn nhiều lớp.
@@ -34,13 +44,17 @@
 
 ## Tổng quan
 
-Repo này chứa các bản dump database được tạo **tự động qua cron** trên VPS. Mỗi đêm, script `backup.sh` dump cả 4 database, nén lại, rồi phân phối tới ba đích lưu trữ độc lập:
+Repo này chứa các bản dump database được tạo **tự động qua cron** trên VPS. Mỗi đêm, script `backup.sh` dump cả 4 database đang chạy trong Docker, nén bằng `gzip`, rồi phân phối tới ba đích lưu trữ độc lập:
 
 | Lớp lưu trữ | Vai trò | Tốc độ khôi phục |
 |---|---|---|
 | **Local (VPS)** | Bản gần nhất, restore nhanh nhất | ⚡ Nhanh nhất |
 | **GitHub (repo này)** | Lưu lịch sử theo commit, versioned | 🌐 Cần mạng |
 | **Google Drive** | Phòng khi VPS hỏng hoàn toàn | ☁️ Off-site |
+
+Việc tách làm 3 lớp tuân theo nguyên tắc backup **3-2-1**: nhiều bản sao, trên các phương tiện khác nhau, và ít nhất một bản nằm ngoài máy chủ (off-site). Khi VPS gặp sự cố, vẫn còn GitHub và Drive để khôi phục; khi mạng có vấn đề, bản local vẫn restore được ngay.
+
+Quá trình dump được thiết kế để **không gây downtime**: MySQL dùng `--single-transaction`, Redis dùng `BGSAVE` (lưu nền, không chặn), nên các container vẫn phục vụ người chơi bình thường trong lúc backup.
 
 Mỗi lần backup là một commit `backup: <ngày_giờ>`. Bản cũ hơn **7 ngày** sẽ tự động bị dọn ở cả ba nơi (commit `cleanup: remove backups older than 7 days`).
 
@@ -84,6 +98,18 @@ Mỗi loại database có một định dạng riêng. Tên file theo mẫu `<db
 | `redis_*.rdb.gz` | Redis | `BGSAVE` + copy `dump.rdb` | File RDB nhị phân |
 
 > Vì chỉ `.sql.gz` giải nén ra là SQL text thật nên repo gán nhãn ngôn ngữ **SQL** (xem `.gitattributes`). Mongo archive và Redis RDB là binary, không thuộc ngôn ngữ nào nên cố ý không gán.
+
+Muốn **xem nhanh nội dung** một bản dump SQL mà không cần restore vào database:
+
+```bash
+# Xem toàn bộ
+zcat mysql_2026-05-22_0400.sql.gz | less
+
+# Tìm một bảng cụ thể
+zcat pg_2026-05-22_0400.sql.gz | grep -i "CREATE TABLE players"
+```
+
+(File `.archive.gz` của Mongo và `.rdb.gz` của Redis là nhị phân nên `zcat` chỉ ra ký tự rác — chúng chỉ đọc được qua `mongorestore` / Redis.)
 
 ---
 
@@ -245,6 +271,27 @@ Chạy không tham số để xem danh sách file local đang có sẵn:
 - **Auto-renew SSL:** certbot renew lúc 3:00 mỗi ngày (cấu hình bởi `bootstrap.sh`).
 - **Dọn dẹp:** file cũ hơn `LOCAL_RETENTION_DAYS` (mặc định 7) bị xoá ở local + GitHub; bản trên Drive xoá theo `DRIVE_RETENTION_DAYS`.
 - **Log:** `backup/backup.log`, xoay vòng hằng tuần qua logrotate, giữ 4 tuần.
+
+---
+
+## Xử lý sự cố thường gặp
+
+| Triệu chứng | Nguyên nhân thường gặp | Cách kiểm tra |
+|---|---|---|
+| Cron không chạy đúng giờ | Daemon cron còn dùng timezone cũ | `timedatectl` xem timezone; bootstrap đã restart cron sau khi đổi sang `Asia/Ho_Chi_Minh` |
+| Push GitHub báo lỗi (rejected) | Lịch sử local lệch remote (vì đã sửa file trên web) | `cd` vào repo data rồi `git pull origin main`, sau đó chạy lại |
+| `Permission denied (publickey)` | SSH key chưa nhận hoặc sai user | `ssh -T git@github.com`; kiểm tra `~/.ssh/config` trỏ đúng key |
+| Upload Drive fail | Token rclone hết hạn | `rclone lsd <remote>:`; nếu lỗi thì `rclone config reconnect <remote>:` |
+| Dump rỗng / 0 byte | Sai mật khẩu DB hoặc tên container | Xem `backup/backup.log`; đối chiếu `*_CONTAINER`, `*_PASS` trong `.env` |
+| File trên 100MB không push được | Giới hạn file đơn lẻ của GitHub | Cân nhắc chỉ dựa vào Drive cho DB lớn; xem mục dưới |
+
+Khi cron "im lặng" không rõ lý do, nơi đầu tiên cần xem luôn là log:
+
+```bash
+tail -n 50 backup/backup.log
+```
+
+> **Về lâu dài:** GitHub giới hạn 100MB/file và repo phình theo lịch sử commit (kể cả sau khi cleanup, bản cũ vẫn nằm trong git history). Nếu database lớn dần, nên ưu tiên Google Drive hoặc object storage (Backblaze B2, Cloudflare R2...) cho các bản dump nhị phân lớn, và để GitHub giữ vai trò versioning cho phần nhẹ.
 
 ---
 
