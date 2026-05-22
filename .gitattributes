@@ -1,0 +1,3 @@
+*.sql.gz linguist-language=SQL
+*.sql.gz linguist-detectable=true
+*.sql.gz -linguist-generated
