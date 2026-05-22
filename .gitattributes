@@ -1,3 +1,11 @@
-*.sql.gz linguist-language=SQL
-*.sql.gz linguist-detectable=true
-*.sql.gz -linguist-generated
+# Các bản backup database được nén gzip nên Git/Linguist mặc định coi là binary
+# và bỏ qua khi thống kê ngôn ngữ. Khai báo dưới đây để repo nhận diện đúng.
+
+# mysql_*.sql.gz và pg_*.sql.gz: GIẢI NÉN ra là file .sql text thuần,
+# chứa lệnh SQL người đọc được (CREATE TABLE, INSERT...) → đúng là ngôn ngữ SQL,
+# nên ép Linguist nhận là SQL là hợp lệ về bản chất.
+*.sql.gz linguist-language=SQL linguist-detectable=true -linguist-generated
+
+# Lưu ý: mongo_*.archive.gz (MongoDB dump) và redis_*.rdb.gz (Redis RDB snapshot)
+# GIẢI NÉN ra vẫn là binary (định dạng nhị phân riêng của Mongo/Redis, không đọc được),
+# KHÔNG thuộc ngôn ngữ nào → cố ý không khai báo, để Linguist bỏ qua.
