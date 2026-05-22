@@ -2,7 +2,7 @@
   <img src="https://i.pinimg.com/originals/fd/91/b1/fd91b1715061efc79dbb6678aea0f9b9.gif" width="220" alt="Ngọc Rồng Online">
 </p>
 
-<h1 align="center">dragonboy-db-backups</h1>
+<h1 align="center">Database Backups</h1>
 
 <p align="center">
   <em>Automated Database Backups · MySQL · PostgreSQL · MongoDB · Redis · 3-Layer Storage</em>
